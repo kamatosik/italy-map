@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Italy — Regions, Cities & Airports</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+:root{--sea:#daeaf5;--bg:#f5f0e8;--panel:#faf7f2;--red:#b5312a;--blue:#1a4f80;--text:#2a2218;--muted:#7a6e62}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+header{padding:12px 22px;border-bottom:1px solid #ddd5c8;display:flex;align-items:baseline;gap:14px}
+header h1{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:600}
+header p{font-size:12px;color:var(--muted)}
+#main{display:flex;flex:1;overflow:hidden;position:relative}
+
+/* Map */
+#map-wrap{flex:1;background:var(--sea);position:relative;overflow:hidden;cursor:grab;user-select:none}
+#map-wrap.grabbing{cursor:grabbing}
+#svg-container{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;transform-origin:0 0}
+#map-wrap svg{width:560px;height:auto;filter:drop-shadow(0 3px 18px rgba(0,0,0,.13))}
+.reg{cursor:pointer;stroke:#fff;stroke-width:0.7;stroke-linejoin:round;transition:filter .15s,stroke-width .15s}
+.reg:hover{filter:brightness(.82) saturate(1.2)}
+.reg.active{filter:brightness(.7) saturate(1.5);stroke-width:1.5;stroke:#fff}
+#zoom-btns{position:absolute;bottom:16px;right:16px;display:flex;flex-direction:column;gap:4px;z-index:10}
+.zbtn{width:32px;height:32px;border-radius:6px;border:1px solid #c8bfb2;background:var(--panel);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:monospace;transition:background .1s;line-height:1}
+.zbtn:hover{background:#ede8df}
+#zoom-hint{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);font-size:10px;color:#a09080;pointer-events:none;white-space:nowrap}
+.sea-label{font-size:7.5px;fill:#6a96b5;font-style:italic;pointer-events:none}
+
+/* Airport tooltip */
+#ap-tooltip{position:absolute;background:rgba(15,30,50,.93);color:#f0f4f8;border-radius:7px;padding:9px 12px;font-size:11px;line-height:1.6;pointer-events:none;z-index:30;min-width:190px;max-width:240px;display:none;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+#ap-tooltip strong{display:block;font-size:13px;font-weight:500;color:#fff;margin-bottom:3px}
+#ap-tooltip .ap-code{display:inline-block;background:#1a4f80;color:#b5d4f4;font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;margin-bottom:5px;letter-spacing:.06em}
+#ap-tooltip .ap-row{display:flex;gap:6px;color:#c8d8e8}
+#ap-tooltip .ap-lbl{color:#7a96b0;min-width:56px}
+.ap-dot{cursor:pointer}
+.ap-dot circle{transition:r .12s,opacity .12s}
+.ap-dot:hover circle.bg{r:6;opacity:.3}
+.ap-dot:hover circle.fg{r:4}
+
+/* Right panel: region list */
+#panel{width:220px;flex-shrink:0;background:var(--panel);border-left:1px solid #ddd5c8;display:flex;flex-direction:column;overflow:hidden;z-index:1}
+#ptop{padding:12px 14px;border-bottom:1px solid #e8e0d4}
+#ptop h2{font-family:'Cormorant Garamond',serif;font-size:14px;font-weight:600;margin-bottom:8px}
+.frow{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+.fbtn{font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid #c8bfb2;background:transparent;cursor:pointer;color:var(--muted);font-family:'DM Sans',sans-serif;transition:all .15s}
+.fbtn.on{background:var(--text);color:#fff;border-color:var(--text)}
+.leg{font-size:10px;color:var(--muted)}
+.leg-row{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.ldot{width:7px;height:7px;border-radius:50%;background:var(--red);border:1.5px solid #fff;outline:1px solid #c0392b;flex-shrink:0}
+#rlist{flex:1;overflow-y:auto;padding:4px 0}
+.ritem{padding:4px 14px;font-size:11px;cursor:pointer;color:var(--muted);border-left:2px solid transparent;transition:all .1s}
+.ritem:hover{background:#f0ebe2;color:var(--text)}
+.ritem.on{color:var(--text);font-weight:500;border-left-color:var(--red);background:#f0ebe2}
+
+/* Region detail overlay (slides in from right) */
+#detail{
+  position:absolute;top:0;right:0;bottom:0;
+  width:360px;
+  background:var(--panel);
+  border-left:1px solid #ddd5c8;
+  display:flex;flex-direction:column;
+  transform:translateX(100%);
+  transition:transform .35s cubic-bezier(.4,0,.2,1);
+  z-index:20;
+  overflow:hidden;
+}
+#detail.open{transform:translateX(0)}
+#detail-header{
+  padding:14px 16px 10px;
+  border-bottom:1px solid #e8e0d4;
+  display:flex;align-items:flex-start;justify-content:space-between;
+  flex-shrink:0;
+}
+#detail-title{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;line-height:1.1}
+#detail-subtitle{font-size:11px;color:var(--muted);margin-top:2px}
+#close-btn{background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:2px 4px;line-height:1;flex-shrink:0;margin-left:8px}
+#close-btn:hover{color:var(--text)}
+#detail-body{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:14px}
+.d-section h3{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px}
+.d-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.d-stat{background:#f0ebe2;border-radius:6px;padding:7px 9px}
+.d-stat .sv{font-size:14px;font-weight:500;color:var(--text)}
+.d-stat .sk{font-size:10px;color:var(--muted);margin-top:1px}
+.city-list{display:flex;flex-direction:column;gap:4px}
+.city-item{display:flex;align-items:baseline;gap:6px;font-size:12px}
+.city-dot{width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0;margin-bottom:-1px}
+.city-name{font-weight:500;color:var(--text)}
+.city-desc{color:var(--muted);font-size:11px}
+.sight-list{display:flex;flex-direction:column;gap:5px}
+.sight-item{font-size:12px;display:flex;gap:7px;align-items:flex-start;cursor:pointer;border-radius:6px;padding:4px 5px;margin:-4px -5px;transition:background .12s}
+.sight-item:hover{background:#f0ebe2}
+.sight-item:hover .sight-text strong{color:var(--blue);text-decoration:underline;text-underline-offset:2px}
+.sight-icon{font-size:13px;flex-shrink:0;margin-top:1px}
+.sight-text strong{color:var(--text);font-weight:500;transition:color .12s}
+.sight-text span{color:var(--muted);font-size:11px;display:block}
+.food-list{display:flex;flex-wrap:wrap;gap:5px}
+.food-tag{background:#ede8df;border-radius:12px;padding:3px 9px;font-size:11px;color:var(--text);cursor:pointer;transition:background .12s,color .12s}
+.food-tag:hover{background:var(--blue);color:#fff}
+</style>
+</head>
+<body>
+<header>
+  <h1>Italia</h1>
+  <p>Regions · capitals · airports</p>
+</header>
+<div id="main">
+  <div id="map-wrap">
+    <div id="svg-container">
+    <svg id="svg" viewBox="130 0 700 700" xmlns="http://www.w3.org/2000/svg">
+    <path class="reg" data-n="Trentino-Alto Adige" fill="#85B7EB" d="M370.7,2.6L357.6,11.5L333.6,11.0L322.0,25.1L313.7,25.7L308.9,19.9L303.7,21.5L301.1,28.3L304.2,38.7L315.2,48.2L312.1,53.4L312.6,67.0L308.9,72.8L312.1,85.3L325.7,79.1L326.7,91.1L334.6,90.6L340.4,77.0L349.8,70.7L356.6,71.7L357.1,66.5L367.6,58.6L362.3,56.0L361.8,38.2L385.9,27.2L371.3,13.1Z"/>
+    <path class="reg" data-n="Veneto" fill="#378ADD" d="M396.9,27.2L367.6,41.9L366.0,53.4L371.8,56.0L371.8,60.7L361.8,69.1L360.3,77.5L348.2,77.5L338.3,94.8L322.0,94.2L318.9,113.1L348.7,132.5L352.4,138.7L371.8,133.5L384.3,134.6L392.2,139.8L396.4,137.7L387.5,120.9L381.7,118.8L383.8,106.3L394.3,96.3L400.6,95.3L402.7,99.5L417.3,87.4L414.2,81.7L397.4,82.7L389.1,72.8L391.7,61.3L384.9,53.4L401.6,34.0Z"/>
+    <path class="reg" data-n="Friuli-Venezia Giulia" fill="#185FA5" d="M405.3,30.4L407.4,36.6L395.9,44.5L390.6,53.9L395.9,59.7L392.7,70.2L402.7,78.5L409.5,75.4L416.8,77.0L421.5,85.3L422.6,80.1L438.3,81.2L441.4,69.6L436.7,68.1L434.6,62.3L439.3,54.4L426.2,52.4L425.7,46.1L439.8,33.5Z"/>
+    <path class="reg" data-n="Lombardia" fill="#B5D4F4" d="M299.5,39.8L287.5,37.7L292.7,57.6L286.9,62.8L279.1,52.4L265.0,59.2L255.0,46.6L246.1,74.3L258.7,63.3L255.5,77.0L260.8,89.5L250.8,81.7L246.6,89.0L235.1,88.5L232.5,73.3L227.3,90.6L236.2,116.8L229.9,123.6L224.6,120.9L229.9,135.6L241.9,134.6L254.0,152.9L254.0,142.9L265.0,128.8L290.6,131.9L308.9,141.4L315.7,136.1L327.3,141.4L347.2,137.7L307.9,107.3L307.9,96.9L317.3,86.4L307.9,88.5L305.8,52.4L310.5,48.2Z"/>
+    <path class="reg" data-n="Piemonte" fill="#5DCAA5" d="M215.7,48.7L202.1,61.8L204.7,67.0L198.5,77.0L193.2,78.5L196.4,104.7L167.6,109.9L161.3,127.7L141.9,135.1L147.7,145.0L157.6,149.7L159.7,159.7L151.3,169.1L164.4,191.6L185.9,190.6L196.9,195.8L207.9,169.6L215.2,171.2L227.8,164.4L235.1,167.0L239.3,159.7L250.8,163.3L249.8,153.9L237.2,138.7L226.7,139.3L218.9,122.5L232.0,112.6L223.6,93.7L227.3,72.3L214.7,60.7Z"/>
+    <path class="reg" data-n="Valle d'Aosta" fill="#9FE1CB" d="M191.6,83.2L178.0,78.5L172.3,82.7L156.0,85.9L149.2,91.1L151.9,95.3L156.6,96.9L157.6,104.7L159.7,106.8L163.9,105.8L163.9,107.9L165.5,105.8L171.7,104.7L174.4,101.6L187.5,103.1L193.2,101.0Z"/>
+    <path class="reg" data-n="Emilia-Romagna" fill="#C0DD97" d="M259.2,145.0L259.7,157.1L255.0,162.3L267.0,165.4L267.6,172.2L276.0,176.4L278.6,171.2L287.5,170.7L298.5,180.1L306.8,180.1L316.8,190.0L337.2,190.6L354.0,180.6L357.1,185.9L369.2,187.4L366.0,197.4L369.2,203.7L382.2,209.9L385.9,200.0L403.7,192.1L391.7,177.0L389.6,162.3L383.8,163.3L379.1,157.6L384.9,152.9L381.7,138.2L361.8,142.9L338.3,140.3L329.4,145.5L317.8,140.3L314.2,145.0L305.8,145.0L285.9,135.1L273.9,137.7L267.6,133.0Z"/>
+    <path class="reg" data-n="Liguria" fill="#1D9E75" d="M286.4,194.2L270.7,177.0L261.3,177.0L263.4,168.6L248.2,169.6L241.4,163.9L236.2,174.3L229.3,168.6L225.7,174.3L211.5,173.8L203.2,200.0L188.5,197.4L181.7,209.4L182.7,214.7L196.4,211.0L222.0,179.6L233.0,174.9L258.1,180.1L279.6,194.8Z"/>
+    <path class="reg" data-n="Toscana" fill="#97C459" d="M280.1,175.9L279.1,180.1L302.1,206.3L306.3,230.4L317.3,247.6L316.3,261.3L326.7,264.9L329.4,274.9L349.8,292.1L346.1,298.4L358.2,297.4L363.9,285.3L372.8,281.1L370.2,271.2L377.5,267.0L377.0,248.2L385.4,241.4L381.7,231.4L392.7,212.0L382.2,214.7L370.7,211.0L361.8,200.5L363.4,192.7L353.4,187.4L338.8,195.3L329.4,196.3L321.5,191.6L314.2,194.2L305.3,185.3L297.9,186.4L284.9,174.9Z"/>
+    <path class="reg" data-n="Marche" fill="#FAC775" d="M389.1,203.7L398.5,209.9L399.5,222.0L409.0,227.2L418.4,226.7L427.3,257.1L437.2,262.3L440.4,269.6L449.8,272.2L454.5,264.9L470.7,259.2L452.9,220.4L415.2,199.0L410.5,207.9Z"/>
+    <path class="reg" data-n="Umbria" fill="#639922" d="M392.2,223.0L387.0,234.0L393.8,238.7L388.5,245.5L393.2,247.1L394.3,254.4L385.9,256.0L382.2,250.3L381.2,270.7L384.3,278.5L393.2,278.0L410.5,294.8L425.2,278.0L438.8,273.8L433.0,264.9L423.1,259.7L415.8,230.9L407.9,231.4Z"/>
+    <path class="reg" data-n="Abruzzo" fill="#EF9F27" d="M443.5,283.8L445.1,296.9L454.0,303.7L454.0,308.9L450.3,311.5L439.3,309.9L437.8,314.7L455.0,321.5L455.6,326.2L462.9,329.8L468.1,326.7L483.3,333.0L488.0,329.8L488.5,324.6L493.8,319.4L501.6,320.4L506.9,325.1L515.2,310.5L477.5,277.0L471.8,263.3L463.4,268.6L457.7,268.6L452.9,275.9L452.4,281.7Z"/>
+    <path class="reg" data-n="Lazio" fill="#F5C4B3" d="M368.1,290.6L369.2,296.3L362.9,298.9L373.3,305.8L381.2,318.3L396.4,326.7L400.6,336.6L406.3,338.2L421.0,355.0L435.7,358.6L440.9,366.0L450.3,361.8L472.3,363.3L482.3,345.5L480.7,338.2L452.9,331.4L451.4,324.6L433.0,316.7L436.2,306.3L446.7,307.3L436.2,292.7L439.8,280.1L448.7,278.5L445.6,274.9L429.4,282.2L412.1,298.9L402.7,296.9L391.7,282.7L384.3,291.1L376.5,283.8Z"/>
+    <path class="reg" data-n="Molise" fill="#BA7517" d="M533.6,317.8L518.9,312.6L511.1,327.2L506.3,330.9L496.4,323.6L492.2,327.2L492.2,331.9L484.9,337.7L487.5,342.4L487.0,350.8L489.1,344.5L496.9,344.5L513.7,350.3L520.0,345.0L527.8,344.0L526.2,334.6L533.6,330.4Z"/>
+    <path class="reg" data-n="Campania" fill="#F0997B" d="M482.8,352.4L476.0,366.0L492.7,389.5L498.0,385.3L503.7,386.4L509.5,393.2L509.0,400.0L528.3,395.8L538.8,412.6L536.2,423.0L548.8,426.7L557.1,434.5L565.0,428.8L571.8,430.9L577.0,417.8L565.5,409.4L551.4,385.9L550.9,378.5L555.6,379.1L558.2,372.2L544.0,368.1L542.5,358.1L533.1,353.9L533.6,348.2L522.1,349.7L514.7,355.0L491.7,349.7L489.1,356.0Z"/>
+    <path class="reg" data-n="Puglia" fill="#FAECE7" d="M537.2,318.8L539.3,330.9L531.0,340.8L546.7,356.0L547.2,364.4L582.8,361.8L584.4,371.2L593.8,371.2L603.2,381.7L620.0,382.2L627.3,399.5L650.3,393.7L647.7,400.0L680.7,404.7L687.5,421.5L701.7,429.3L707.4,411.5L678.6,382.7L577.0,345.0L571.3,333.0L580.2,314.7L571.8,314.1L564.5,320.4L559.2,316.7L548.2,321.5Z"/>
+    <path class="reg" data-n="Basilicata" fill="#D85A30" d="M561.9,369.6L556.6,388.5L562.9,390.0L569.2,406.3L580.7,414.7L575.5,434.5L589.1,430.9L591.2,436.6L604.3,433.5L601.6,419.4L616.8,420.4L625.2,403.7L619.5,401.0L617.4,386.4L604.3,388.5L591.7,375.9L580.7,374.3L579.1,364.9Z"/>
+    <path class="reg" data-n="Calabria" fill="#993C1D" d="M615.3,424.6L610.5,425.1L608.5,439.3L589.1,440.8L583.8,436.1L579.1,439.8L610.0,504.2L604.3,514.7L591.7,519.4L596.9,527.7L583.3,556.0L590.1,562.8L604.3,561.8L609.5,545.0L624.2,531.9L624.7,505.8L637.8,494.2L650.9,492.1L646.7,467.0L640.4,461.3L618.4,454.4L611.6,446.6L617.4,433.0Z"/>
+    <path class="reg" data-n="Sardegna" fill="#FAC775" d="M258.1,377.5L257.6,383.8L230.4,406.3L221.0,405.8L211.5,399.5L210.5,415.7L226.2,436.6L222.5,457.1L227.8,452.9L229.9,475.4L225.2,475.9L223.6,504.7L233.0,522.0L249.2,517.3L248.2,498.9L256.6,498.4L276.5,507.3L283.3,450.3L278.0,440.8L286.9,421.5L281.2,402.6L272.3,398.4L271.8,386.4L268.1,388.0Z"/>
+    <path class="reg" data-n="Sicilia" fill="#FAEEDA" d="M580.7,544.0L521.0,567.0L490.6,571.7L465.5,559.7L445.1,571.2L438.3,562.3L428.9,573.8L427.3,589.0L432.5,594.2L465.5,603.7L490.1,618.3L517.3,623.0L536.7,640.8L562.4,645.0L563.4,631.4L572.3,622.5L563.9,614.7L565.5,608.9L557.7,605.8L556.6,592.1Z"/>
+    <text class="sea-label" x="168" y="232" text-anchor="middle">Ligurian Sea</text>
+    <text class="sea-label" x="310" y="350" text-anchor="middle">Tyrrhenian Sea</text>
+    <text class="sea-label" x="490" y="200" text-anchor="middle">Adriatic Sea</text>
+    <text class="sea-label" x="660" y="490" text-anchor="middle">Ionian Sea</text>
+    <text class="sea-label" x="460" y="660" text-anchor="middle">Mediterranean Sea</text>
+    <text class="sea-label" x="195" y="470" text-anchor="middle">Sardinian Sea</text>
+    <g id="airports"></g>
+    <g id="capitals"></g>
+    </svg>
+    </div>
+    <div id="zoom-btns">
+      <button class="zbtn" onclick="zoom(1.3)" title="Zoom in">+</button>
+      <button class="zbtn" onclick="zoom(1/1.3)" title="Zoom out">−</button>
+      <button class="zbtn" onclick="resetView()" title="Reset" style="font-size:13px">⌂</button>
+    </div>
+    <div id="zoom-hint">Scroll to zoom · drag to pan · click region for details</div>
+    <div id="ap-tooltip"></div>
+
+    <!-- Region detail panel (slides over map) -->
+    <div id="detail">
+      <div id="detail-header">
+        <div>
+          <div id="detail-title">—</div>
+          <div id="detail-subtitle"></div>
+        </div>
+        <button id="close-btn" onclick="closeDetail()">✕</button>
+      </div>
+      <div id="detail-body"></div>
+    </div>
+  </div>
+
+  <!-- Region list panel -->
+  <div id="panel">
+    <div id="ptop">
+      <h2>Regioni d'Italia</h2>
+      <div class="frow">
+        <button class="fbtn on" onclick="togLayer('capitals',this)">● Capitals</button>
+        <button class="fbtn on" onclick="togLayer('airports',this)">✈ Airports</button>
+      </div>
+      <div class="leg">
+        <div class="leg-row"><div class="ldot"></div>Regional capital</div>
+        <div class="leg-row"><span style="font-size:11px;color:#1a4f80">✈</span>&nbsp;Airport (hover)</div>
+        <div class="leg-row"><span style="font-size:10px">★</span>&nbsp;National capital</div>
+      </div>
+    </div>
+    <div id="rlist"></div>
+  </div>
+</div>
+
+<script>
+const REGIONS = {
+  "Valle d'Aosta": {
+    cap:"Aosta", pop:"~125,000", area:"3,263 km²", ap:"No airport",
+    cities:[
+      {n:"Aosta",d:"Roman capital, medieval towers"},
+      {n:"Courmayeur",d:"Ski resort near Mont Blanc"},
+      {n:"Saint-Vincent",d:"Casino and thermal spa"},
+    ],
+    sights:[
+      {i:"🏰",n:"Aosta Roman Theatre",d:"1st-century BC amphitheatre"},
+      {i:"⛰️",n:"Mont Blanc (4,808 m)",d:"Highest peak in the Alps"},
+      {i:"🏯",n:"Fénis Castle",d:"Best-preserved medieval castle in Italy"},
+      {i:"🌿",n:"Gran Paradiso NP",d:"Italy's oldest national park"},
+    ],
+    food:["Fontina cheese","Carbonade valdostana","Polenta concia","Seupa à la Vapelenentse","Tegole biscuits"],
+  },
+  "Piemonte": {
+    cap:"Turin", pop:"~4.3 M", area:"25,402 km²", ap:"Turin Caselle (TRN)",
+    cities:[
+      {n:"Turin",d:"Capital, Baroque palaces, Fiat HQ"},
+      {n:"Asti",d:"Wine capital, famous Palio race"},
+      {n:"Alessandria",d:"Commerce hub, Borsalino hats"},
+      {n:"Alba",d:"White truffle capital of the world"},
+    ],
+    sights:[
+      {i:"⛪",n:"Mole Antonelliana",d:"Iconic Turin tower, cinema museum"},
+      {i:"🏛️",n:"Royal Palace of Turin",d:"UNESCO Savoy Residences"},
+      {i:"🍷",n:"Barolo wine country",d:"Langhe hills, world-class vineyards"},
+      {i:"⛷️",n:"Sestriere ski resort",d:"2006 Winter Olympics venue"},
+    ],
+    food:["Agnolotti dal plin","Bagna càuda","Vitello tonnato","Tajarin pasta","Barolo wine","White truffle","Gianduiotto chocolate"],
+  },
+  "Liguria": {
+    cap:"Genoa", pop:"~1.5 M", area:"5,416 km²", ap:"Genoa Colombo (GOA)",
+    cities:[
+      {n:"Genoa",d:"Largest medieval centre in Europe"},
+      {n:"Sanremo",d:"Music festival, casino, flower market"},
+      {n:"La Spezia",d:"Gateway to Cinque Terre"},
+      {n:"Portofino",d:"Glamorous fishing village"},
+    ],
+    sights:[
+      {i:"🏘️",n:"Cinque Terre",d:"Five clifftop villages, UNESCO site"},
+      {i:"🏛️",n:"Genoa Palazzi dei Rolli",d:"UNESCO Renaissance palaces"},
+      {i:"⛵",n:"Portofino",d:"Iconic harbour, celebrity hotspot"},
+      {i:"🌊",n:"Camogli",d:"Colourful fishermen's houses"},
+    ],
+    food:["Pesto alla Genovese","Focaccia Genovese","Farinata","Trofie pasta","Trenette al pesto","Pandolce cake"],
+  },
+  "Lombardia": {
+    cap:"Milan", pop:"~10 M", area:"23,864 km²", ap:"Malpensa (MXP), Linate (LIN), Bergamo (BGY)",
+    cities:[
+      {n:"Milan",d:"Fashion & finance capital of Italy"},
+      {n:"Bergamo",d:"Upper city with Venetian walls"},
+      {n:"Brescia",d:"Steel industry, Roman ruins"},
+      {n:"Como",d:"Lake Como, silk production"},
+      {n:"Mantua",d:"Renaissance jewel, Gonzaga palaces"},
+    ],
+    sights:[
+      {i:"⛪",n:"Milan Cathedral (Duomo)",d:"Gothic masterpiece, 500 years to build"},
+      {i:"🎨",n:"The Last Supper",d:"Leonardo da Vinci fresco, Santa Maria"},
+      {i:"🏛️",n:"Pinacoteca di Brera",d:"Top art gallery in northern Italy"},
+      {i:"🏔️",n:"Lake Como",d:"Alpine lake, villas, George Clooney"},
+    ],
+    food:["Risotto alla Milanese","Cotoletta Milanese","Ossobuco","Polenta","Panettone","Grana Padano","Mostarda di Cremona"],
+  },
+  "Trentino-Alto Adige": {
+    cap:"Trento", pop:"~1.1 M", area:"13,606 km²", ap:"Bolzano (BZO)",
+    cities:[
+      {n:"Trento",d:"Council of Trent, Renaissance centre"},
+      {n:"Bolzano",d:"Bilingual capital, Ötzi the Iceman"},
+      {n:"Merano",d:"Spa town, thermal baths"},
+      {n:"Rovereto",d:"War museum, modern art"},
+    ],
+    sights:[
+      {i:"🧊",n:"Ötzi the Iceman",d:"5,300-year-old mummy, Bolzano"},
+      {i:"🏔️",n:"Dolomites",d:"UNESCO World Heritage mountains"},
+      {i:"🏰",n:"Castel Tirolo",d:"Medieval castle above Merano"},
+      {i:"⛪",n:"Trento Cathedral",d:"Site of the Council of Trent 1545–63"},
+    ],
+    food:["Canederli (bread dumplings)","Speck Alto Adige","Apple strudel","Kaiserschmarrn","Schlutzkrapfen pasta","Zelten cake"],
+  },
+  "Veneto": {
+    cap:"Venice", pop:"~5 M", area:"18,391 km²", ap:"Venice Marco Polo (VCE), Verona (VRN)",
+    cities:[
+      {n:"Venice",d:"City on water, Carnival, gondolas"},
+      {n:"Verona",d:"Romeo & Juliet, Roman Arena"},
+      {n:"Padua",d:"One of Europe's oldest universities"},
+      {n:"Vicenza",d:"Palladio's architecture, UNESCO"},
+      {n:"Treviso",d:"Prosecco hills, Benetton HQ"},
+    ],
+    sights:[
+      {i:"🏛️",n:"St Mark's Basilica",d:"Byzantine masterpiece in Venice"},
+      {i:"🎭",n:"Venice Carnival",d:"World-famous masquerade festival"},
+      {i:"🏟️",n:"Verona Arena",d:"Roman amphitheatre, summer opera"},
+      {i:"🎨",n:"Scrovegni Chapel",d:"Giotto frescoes, Padua"},
+    ],
+    food:["Risotto al nero di seppia","Bigoli pasta","Baccalà alla Vicentina","Sarde in saor","Tiramisu","Prosecco","Soave wine"],
+  },
+  "Friuli-Venezia Giulia": {
+    cap:"Trieste", pop:"~1.2 M", area:"7,924 km²", ap:"Trieste (TRS)",
+    cities:[
+      {n:"Trieste",d:"Habsburg legacy, coffee culture"},
+      {n:"Udine",d:"Tiepolo frescoes, Friulian capital"},
+      {n:"Gorizia",d:"Border city, divided by Iron Curtain"},
+      {n:"Pordenone",d:"Industrial centre, textile trade"},
+    ],
+    sights:[
+      {i:"🏰",n:"Miramare Castle",d:"19th-century seaside castle, Trieste"},
+      {i:"⛪",n:"Aquileia Basilica",d:"UNESCO early Christian mosaics"},
+      {i:"🍷",n:"Collio wine region",d:"White wines on Slovenian border"},
+      {i:"🌊",n:"Lignano Sabbiadoro",d:"Adriatic beach resort"},
+    ],
+    food:["Frico (cheese crisp)","Jota (bean soup)","Cjarsons pasta","Prosciutto di San Daniele","Gubana pastry","Tocai Friulano wine"],
+  },
+  "Emilia-Romagna": {
+    cap:"Bologna", pop:"~4.5 M", area:"22,453 km²", ap:"Bologna Marconi (BLQ), Rimini (RMI)",
+    cities:[
+      {n:"Bologna",d:"'La Grassa' — food capital of Italy"},
+      {n:"Parma",d:"Ham, cheese, Toscanini birthplace"},
+      {n:"Modena",d:"Ferrari, Lamborghini, balsamic vinegar"},
+      {n:"Ferrara",d:"Renaissance city, Este dynasty"},
+      {n:"Ravenna",d:"Byzantine mosaics, 8 UNESCO sites"},
+    ],
+    sights:[
+      {i:"🏛️",n:"Ravenna mosaics",d:"Finest Byzantine art in the world"},
+      {i:"🏎️",n:"Motor Valley",d:"Ferrari, Lamborghini, Ducati museums"},
+      {i:"🏰",n:"Este Castle, Ferrara",d:"Massive moated Renaissance castle"},
+      {i:"⛪",n:"Bologna Two Towers",d:"Leaning medieval towers"},
+    ],
+    food:["Tagliatelle al ragù (bolognese)","Tortellini in brodo","Mortadella","Parmigiano-Reggiano","Prosciutto di Parma","Aceto balsamico di Modena","Lasagne"],
+  },
+  "Toscana": {
+    cap:"Florence", pop:"~3.7 M", area:"22,987 km²", ap:"Pisa (PSA), Florence (FLR)",
+    cities:[
+      {n:"Florence",d:"Cradle of the Renaissance"},
+      {n:"Siena",d:"Gothic beauty, Palio horse race"},
+      {n:"Pisa",d:"Leaning Tower, Arno riverfront"},
+      {n:"Lucca",d:"Intact Renaissance walls"},
+      {n:"San Gimignano",d:"Medieval towers, UNESCO site"},
+    ],
+    sights:[
+      {i:"🎨",n:"Uffizi Gallery",d:"Botticelli, Michelangelo, da Vinci"},
+      {i:"⛪",n:"Florence Cathedral",d:"Brunelleschi's dome, masterpiece of engineering"},
+      {i:"🗿",n:"David by Michelangelo",d:"Galleria dell'Accademia"},
+      {i:"🌿",n:"Chianti wine region",d:"Rolling hills, vineyards, olive groves"},
+    ],
+    food:["Bistecca alla Fiorentina","Ribollita soup","Pappardelle al cinghiale","Panzanella","Cantucci","Chianti wine","Lardo di Colonnata"],
+  },
+  "Marche": {
+    cap:"Ancona", pop:"~1.5 M", area:"9,366 km²", ap:"Ancona Falconara (AOI)",
+    cities:[
+      {n:"Ancona",d:"Main Adriatic port, Greek origin"},
+      {n:"Urbino",d:"Birthplace of Raphael, UNESCO"},
+      {n:"Pesaro",d:"Rossini birthplace, ceramics"},
+      {n:"Ascoli Piceno",d:"Travertine piazza, olive ascolane"},
+    ],
+    sights:[
+      {i:"🏛️",n:"Ducal Palace, Urbino",d:"Renaissance gem, UNESCO World Heritage"},
+      {i:"🎨",n:"Raphael's birthplace",d:"Museum in Urbino"},
+      {i:"⛰️",n:"Monte Conero",d:"Limestone cliffs, marine reserve"},
+      {i:"🏖️",n:"Riviera del Conero",d:"Crystal-clear Adriatic coves"},
+    ],
+    food:["Vincisgrassi (lasagne)","Brodetto di pesce","Olive ascolane","Vincigrassi","Ciauscolo salami","Verdicchio wine"],
+  },
+  "Umbria": {
+    cap:"Perugia", pop:"~870,000", area:"8,464 km²", ap:"Perugia (PEG)",
+    cities:[
+      {n:"Perugia",d:"Chocolate capital, Etruscan heritage"},
+      {n:"Assisi",d:"St Francis birthplace, UNESCO"},
+      {n:"Orvieto",d:"Cathedral on volcanic cliff"},
+      {n:"Spoleto",d:"Festival of Two Worlds"},
+    ],
+    sights:[
+      {i:"⛪",n:"Assisi Basilica",d:"UNESCO frescoes by Giotto & Cimabue"},
+      {i:"⛪",n:"Orvieto Cathedral",d:"Façade of golden mosaic and bas-reliefs"},
+      {i:"🌿",n:"Marmore Falls",d:"Tallest artificial waterfall in Europe"},
+      {i:"🍫",n:"Eurochocolate Festival",d:"Annual October festival, Perugia"},
+    ],
+    food:["Truffles (black & white)","Porchetta","Strangozzi pasta","Lenticchie di Castelluccio","Sagrantino wine","Perugina Baci chocolates"],
+  },
+  "Lazio": {
+    cap:"Rome ★", pop:"~5.8 M", area:"17,242 km²", ap:"Fiumicino (FCO), Ciampino (CIA)",
+    cities:[
+      {n:"Rome",d:"Eternal City, capital of Italy"},
+      {n:"Viterbo",d:"Papal city, medieval quarter"},
+      {n:"Frosinone",d:"Ciociaria region centre"},
+      {n:"Latina",d:"Pontine Marshes, WWII history"},
+    ],
+    sights:[
+      {i:"🏛️",n:"Colosseum",d:"Iconic Roman amphitheatre, 70 AD"},
+      {i:"⛪",n:"Vatican & St Peter's",d:"Sistine Chapel, Michelangelo's ceiling"},
+      {i:"⛲",n:"Trevi Fountain",d:"Baroque masterpiece, toss a coin"},
+      {i:"🏛️",n:"Pantheon",d:"Best-preserved Roman temple, 125 AD"},
+    ],
+    food:["Cacio e pepe","Carbonara","Amatriciana","Coda alla vaccinara","Supplì","Saltimbocca alla Romana","Maritozzi"],
+  },
+  "Abruzzo": {
+    cap:"L'Aquila", pop:"~1.3 M", area:"10,832 km²", ap:"Pescara (PSR)",
+    cities:[
+      {n:"L'Aquila",d:"Rebuilt after 2009 earthquake"},
+      {n:"Pescara",d:"Adriatic resort, D'Annunzio birthplace"},
+      {n:"Chieti",d:"University city, Roman ruins"},
+      {n:"Teramo",d:"Gateway to Gran Sasso"},
+    ],
+    sights:[
+      {i:"⛰️",n:"Gran Sasso d'Italia",d:"Highest peak in Apennines (2,912 m)"},
+      {i:"🐻",n:"Abruzzo National Park",d:"Brown bears, wolves, Marsican bears"},
+      {i:"🏰",n:"Rocca Calascio",d:"Hilltop castle, used in film Ladyhawke"},
+      {i:"⛪",n:"Basilica di Collemaggio",d:"L'Aquila, founded 1288"},
+    ],
+    food:["Maccheroni alla chitarra","Arrosticini (lamb skewers)","Brodetto di pesce","Sagne e fagioli","Parrozzo cake","Centerbe liqueur"],
+  },
+  "Molise": {
+    cap:"Campobasso", pop:"~300,000", area:"4,438 km²", ap:"No airport",
+    cities:[
+      {n:"Campobasso",d:"Capital, medieval upper town"},
+      {n:"Isernia",d:"Ancient Samnite city"},
+      {n:"Termoli",d:"Adriatic port, old castle"},
+      {n:"Agnone",d:"Bell-making tradition since Middle Ages"},
+    ],
+    sights:[
+      {i:"🏰",n:"Castello Monforte",d:"Overlooking Campobasso"},
+      {i:"🏛️",n:"La Pietà by Isernia",d:"Palaeolithic site, 736,000 years old"},
+      {i:"🔔",n:"Pontelandolfo Bells",d:"Agnone's bronze bell foundry since 1339"},
+      {i:"🌿",n:"Matese Park",d:"Mountains, lakes, wolves"},
+    ],
+    food:["Cavatelli pasta","Zuppa di fagioli","Scamorza cheese","Pallotte cacio e ova","Taccozze e fagioli","Fusilli al sugo"],
+  },
+  "Campania": {
+    cap:"Naples", pop:"~5.7 M", area:"13,671 km²", ap:"Naples Capodichino (NAP)",
+    cities:[
+      {n:"Naples",d:"Pizza birthplace, chaotic & vibrant"},
+      {n:"Pompeii",d:"Roman city frozen by Vesuvius 79 AD"},
+      {n:"Salerno",d:"Medical school, Amalfi gateway"},
+      {n:"Caserta",d:"Royal Palace, Versailles of Italy"},
+    ],
+    sights:[
+      {i:"🌋",n:"Mount Vesuvius",d:"Active volcano above the Bay of Naples"},
+      {i:"🏛️",n:"Pompeii & Herculaneum",d:"UNESCO-listed Roman ruins"},
+      {i:"🏖️",n:"Amalfi Coast",d:"UNESCO cliffside villages"},
+      {i:"🏝️",n:"Capri",d:"Blue Grotto, luxury island"},
+    ],
+    food:["Pizza Napoletana (UNESCO)","Spaghetti alle vongole","Ragù Napoletano","Mozzarella di Bufala","Sfogliatella","Babà","Limoncello"],
+  },
+  "Puglia": {
+    cap:"Bari", pop:"~4 M", area:"19,541 km²", ap:"Bari (BRI), Brindisi (BDS)",
+    cities:[
+      {n:"Bari",d:"Capital, St Nicholas Basilica"},
+      {n:"Lecce",d:"'Florence of the South', Baroque"},
+      {n:"Taranto",d:"Ancient Greek colony, navy base"},
+      {n:"Brindisi",d:"End of the Appian Way"},
+      {n:"Alberobello",d:"Trulli — UNESCO fairy-tale houses"},
+    ],
+    sights:[
+      {i:"🏠",n:"Trulli of Alberobello",d:"UNESCO cone-roofed stone houses"},
+      {i:"🏰",n:"Castel del Monte",d:"Octagonal Hohenstaufen castle, UNESCO"},
+      {i:"⛪",n:"Lecce Cathedral",d:"Extravagant Baroque facade"},
+      {i:"🌊",n:"Polignano a Mare",d:"Cliffs plunging into the Adriatic"},
+    ],
+    food:["Orecchiette alle cime di rapa","Burrata cheese","Frisella","Tiella di riso patate e cozze","Panzerotti","Primitivo wine","Taralli"],
+  },
+  "Basilicata": {
+    cap:"Potenza", pop:"~560,000", area:"9,992 km²", ap:"Nearest: Bari & Naples",
+    cities:[
+      {n:"Potenza",d:"Highest regional capital in Italy"},
+      {n:"Matera",d:"2019 European Capital of Culture"},
+      {n:"Melfi",d:"Norman castle, volcanic lake"},
+      {n:"Maratea",d:"'Pearl of the Tyrrhenian'"},
+    ],
+    sights:[
+      {i:"🪨",n:"Sassi di Matera",d:"UNESCO cave city, inhabited 10,000 years"},
+      {i:"✝️",n:"Christ statue, Maratea",d:"22 m statue on mountain peak"},
+      {i:"🏰",n:"Castel Lagopesole",d:"Frederick II castle"},
+      {i:"🌿",n:"Pollino National Park",d:"Largest national park in Italy"},
+    ],
+    food:["Peperoni cruschi (crunchy peppers)","Lucanica sausage","Lagane e ceci pasta","Pignata stew","Canestrato di Moliterno cheese","Aglianico del Vulture wine"],
+  },
+  "Calabria": {
+    cap:"Catanzaro", pop:"~2 M", area:"15,222 km²", ap:"Lamezia Terme (SUF), Reggio Calabria (REG)",
+    cities:[
+      {n:"Catanzaro",d:"Capital, silk weaving tradition"},
+      {n:"Reggio Calabria",d:"Riace Bronzes, Strait of Messina"},
+      {n:"Cosenza",d:"Historic centre, university"},
+      {n:"Tropea",d:"Clifftop beach town, red onions"},
+    ],
+    sights:[
+      {i:"🗿",n:"Riace Bronze Warriors",d:"5th-century BC Greek bronzes, Reggio"},
+      {i:"🏖️",n:"Costa degli Dei",d:"'Coast of the Gods', pristine beaches"},
+      {i:"⛪",n:"Tropea Cathedral",d:"Built on a cliff above the sea"},
+      {i:"⛰️",n:"Aspromonte National Park",d:"Wild mountains, rare wildlife"},
+    ],
+    food:["'Nduja spicy sausage","Fileja pasta","Pitta mpigliata","Cipolla rossa di Tropea","Pesce spada alla ghiotta","Pecorino Crotonese"],
+  },
+  "Sicilia": {
+    cap:"Palermo", pop:"~5 M", area:"25,832 km²", ap:"Palermo (PMO), Catania (CTA)",
+    cities:[
+      {n:"Palermo",d:"Arab-Norman architecture, street food"},
+      {n:"Catania",d:"Under Mt Etna, Baroque style"},
+      {n:"Siracusa",d:"Ancient Greek theatre, Ortigia island"},
+      {n:"Taormina",d:"Greek theatre, Etna views, resort"},
+      {n:"Agrigento",d:"Valley of the Temples"},
+    ],
+    sights:[
+      {i:"🌋",n:"Mount Etna",d:"Europe's most active volcano (3,357 m)"},
+      {i:"🏛️",n:"Valley of the Temples",d:"UNESCO Greek temples, Agrigento"},
+      {i:"🎭",n:"Palermo street food markets",d:"Ballarò, Vucciria — Arab-Norman heritage"},
+      {i:"⛪",n:"Monreale Cathedral",d:"Golden Byzantine mosaics"},
+    ],
+    food:["Arancini","Caponata","Pasta alla Norma","Cannoli","Granita","Cassata","Pane e panelle","Marsala wine"],
+  },
+  "Sardegna": {
+    cap:"Cagliari", pop:"~1.6 M", area:"24,100 km²", ap:"Cagliari (CAG), Olbia (OLB), Alghero (AHO)",
+    cities:[
+      {n:"Cagliari",d:"Capital, Phoenician & Roman heritage"},
+      {n:"Sassari",d:"Second city, medieval history"},
+      {n:"Olbia",d:"Gateway to Costa Smeralda"},
+      {n:"Alghero",d:"Catalan culture, coral jewellery"},
+      {n:"Nuoro",d:"Literary capital, Grazia Deledda Nobel"},
+    ],
+    sights:[
+      {i:"🏖️",n:"Costa Smeralda",d:"Emerald coast, billionaire playground"},
+      {i:"🪨",n:"Nuraghe — Bronze Age towers",d:"7,000 ancient stone towers across island"},
+      {i:"🐟",n:"La Maddalena Archipelago",d:"National park, crystal waters"},
+      {i:"🏛️",n:"Nora Archaeological Site",d:"Phoenician-Roman ruins by the sea"},
+    ],
+    food:["Culurgiones pasta","Porceddu (suckling pig)","Bottarga (mullet roe)","Pane carasau (flatbread)","Sebadas pastry","Pecorino Sardo","Cannonau wine"],
+  },
+};
+
+const CAPS = [
+  {n:"Aosta",     reg:"Valle d'Aosta",         x:173,y:93},
+  {n:"Turin",     reg:"Piemonte",              x:196,y:137},
+  {n:"Genoa",     reg:"Liguria",               x:230,y:186,lx:-5,la:"end"},
+  {n:"Milan",     reg:"Lombardia",             x:278,y:100},
+  {n:"Trento",    reg:"Trentino-Alto Adige",   x:340,y:44},
+  {n:"Venice",    reg:"Veneto",                x:367,y:94},
+  {n:"Trieste",   reg:"Friuli-Venezia Giulia", x:416,y:57,lx:-5,la:"end"},
+  {n:"Bologna",   reg:"Emilia-Romagna",        x:333,y:165},
+  {n:"Florence",  reg:"Toscana",               x:343,y:234},
+  {n:"Ancona",    reg:"Marche",                x:436,y:235,lx:-5,la:"end"},
+  {n:"Perugia",   reg:"Umbria",                x:407,y:261},
+  {n:"Rome",      reg:"Lazio",                 x:425,y:324,star:true},
+  {n:"L'Aquila",  reg:"Abruzzo",               x:474,y:302,lx:-5,la:"end"},
+  {n:"Campobasso",reg:"Molise",                x:512,y:333,lx:-5,la:"end"},
+  {n:"Naples",    reg:"Campania",              x:528,y:385},
+  {n:"Bari",      reg:"Puglia",                x:614,y:369,lx:-5,la:"end"},
+  {n:"Potenza",   reg:"Basilicata",            x:590,y:400},
+  {n:"Catanzaro", reg:"Calabria",              x:612,y:492,lx:-5,la:"end"},
+  {n:"Palermo",   reg:"Sicilia",               x:480,y:580},
+  {n:"Cagliari",  reg:"Sardegna",              x:252,y:450},
+];
+
+const AIRPORTS = [
+  {c:"TRN",name:"Turin Caselle",             city:"Turin",    reg:"Piemonte",              pax:"4.0 M/yr",rwy:"1",x:192,y:127},
+  {c:"MXP",name:"Milan Malpensa",            city:"Milan",    reg:"Lombardia",             pax:"29 M/yr", rwy:"2",x:256,y:88},
+  {c:"LIN",name:"Milan Linate",              city:"Milan",    reg:"Lombardia",             pax:"9 M/yr",  rwy:"1",x:272,y:97},
+  {c:"BGY",name:"Bergamo Orio al Serio",     city:"Bergamo",  reg:"Lombardia",             pax:"15 M/yr", rwy:"1",x:284,y:86},
+  {c:"GOA",name:"Genoa C. Colombo",          city:"Genoa",    reg:"Liguria",               pax:"1.5 M/yr",rwy:"1",x:218,y:180},
+  {c:"BZO",name:"Bolzano Airport",           city:"Bolzano",  reg:"Trentino-Alto Adige",   pax:"0.2 M/yr",rwy:"1",x:344,y:28},
+  {c:"VCE",name:"Venice Marco Polo",         city:"Venice",   reg:"Veneto",                pax:"11 M/yr", rwy:"1",x:384,y:82},
+  {c:"VRN",name:"Verona Catullo",            city:"Verona",   reg:"Veneto",                pax:"3.5 M/yr",rwy:"1",x:352,y:102},
+  {c:"TRS",name:"Trieste – FVG",             city:"Trieste",  reg:"Friuli-VG",             pax:"0.8 M/yr",rwy:"1",x:436,y:52},
+  {c:"BLQ",name:"Bologna Marconi",           city:"Bologna",  reg:"Emilia-Romagna",        pax:"9 M/yr",  rwy:"1",x:334,y:157},
+  {c:"RMI",name:"Rimini Miramare",           city:"Rimini",   reg:"Emilia-Romagna",        pax:"1.5 M/yr",rwy:"1",x:394,y:170},
+  {c:"PSA",name:"Pisa Galileo Galilei",      city:"Pisa",     reg:"Toscana",               pax:"6 M/yr",  rwy:"1",x:314,y:220},
+  {c:"FLR",name:"Florence Peretola",         city:"Florence", reg:"Toscana",               pax:"3 M/yr",  rwy:"1",x:330,y:228},
+  {c:"AOI",name:"Ancona Falconara",          city:"Ancona",   reg:"Marche",                pax:"0.6 M/yr",rwy:"1",x:444,y:228},
+  {c:"PEG",name:"Perugia San Francesco",     city:"Perugia",  reg:"Umbria",                pax:"0.3 M/yr",rwy:"1",x:400,y:265},
+  {c:"FCO",name:"Rome Fiumicino",            city:"Rome",     reg:"Lazio",                 pax:"40 M/yr", rwy:"4",x:414,y:332},
+  {c:"CIA",name:"Rome Ciampino",             city:"Rome",     reg:"Lazio",                 pax:"6 M/yr",  rwy:"1",x:429,y:337},
+  {c:"PSR",name:"Pescara Airport",           city:"Pescara",  reg:"Abruzzo",               pax:"1 M/yr",  rwy:"1",x:490,y:280},
+  {c:"NAP",name:"Naples Capodichino",        city:"Naples",   reg:"Campania",              pax:"11 M/yr", rwy:"1",x:534,y:378},
+  {c:"BRI",name:"Bari Karol Wojtyła",        city:"Bari",     reg:"Puglia",                pax:"5 M/yr",  rwy:"1",x:631,y:362},
+  {c:"BDS",name:"Brindisi Airport",          city:"Brindisi", reg:"Puglia",                pax:"3 M/yr",  rwy:"1",x:668,y:400},
+  {c:"SUF",name:"Lamezia Terme",             city:"Lamezia",  reg:"Calabria",              pax:"3 M/yr",  rwy:"1",x:613,y:480},
+  {c:"REG",name:"Reggio Calabria",           city:"Reggio",   reg:"Calabria",              pax:"0.6 M/yr",rwy:"1",x:599,y:550},
+  {c:"PMO",name:"Palermo Falcone-Borsellino",city:"Palermo",  reg:"Sicilia",               pax:"7 M/yr",  rwy:"2",x:460,y:574},
+  {c:"CTA",name:"Catania Fontanarossa",      city:"Catania",  reg:"Sicilia",               pax:"10 M/yr", rwy:"1",x:528,y:614},
+  {c:"CAG",name:"Cagliari Elmas",            city:"Cagliari", reg:"Sardegna",              pax:"4 M/yr",  rwy:"1",x:248,y:444},
+  {c:"OLB",name:"Olbia Costa Smeralda",      city:"Olbia",    reg:"Sardegna",              pax:"3.5 M/yr",rwy:"1",x:263,y:388},
+  {c:"AHO",name:"Alghero Riviera del Corallo",city:"Alghero",reg:"Sardegna",              pax:"1.2 M/yr",rwy:"1",x:218,y:430},
+];
+
+function gSearch(q){window.open("https://www.google.com/search?q="+encodeURIComponent(q),"_blank")}
+
+const NS = "http://www.w3.org/2000/svg";
+function mkEl(tag,attrs,parent){const e=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));if(parent)parent.appendChild(e);return e}
+
+// Airports
+const gAp=document.getElementById("airports");
+const tooltip=document.getElementById("ap-tooltip");
+const mapWrap=document.getElementById("map-wrap");
+AIRPORTS.forEach(a=>{
+  const g=document.createElementNS(NS,"g");
+  g.classList.add("ap-dot");
+  g.setAttribute("transform",`translate(${a.x},${a.y})`);
+  mkEl("circle",{cx:0,cy:0,r:5,fill:"#1a4f80",opacity:"0.13","class":"bg"},g);
+  mkEl("circle",{cx:0,cy:0,r:3,fill:"#1a4f80",opacity:"0.85","class":"fg"},g);
+  const t=mkEl("text",{x:0,y:2.5,"text-anchor":"middle","font-size":"6.5",fill:"#fff","font-weight":"700","pointer-events":"none"},g);
+  t.textContent="✈";
+  g.addEventListener("mouseenter",e=>showTip(a,e));
+  g.addEventListener("mousemove",moveTooltip);
+  g.addEventListener("mouseleave",hideTip);
+  gAp.appendChild(g);
+});
+function showTip(a,e){
+  tooltip.innerHTML=`<span class="ap-code">${a.c}</span><strong>${a.name}</strong>`+
+    `<div class="ap-row"><span class="ap-lbl">City</span>${a.city}</div>`+
+    `<div class="ap-row"><span class="ap-lbl">Region</span>${a.reg}</div>`+
+    `<div class="ap-row"><span class="ap-lbl">Passengers</span>${a.pax}</div>`+
+    `<div class="ap-row"><span class="ap-lbl">Runways</span>${a.rwy}</div>`;
+  tooltip.style.display="block"; moveTooltip(e);
+}
+function moveTooltip(e){
+  const r=mapWrap.getBoundingClientRect();
+  let x=e.clientX-r.left+14,y=e.clientY-r.top+14;
+  if(x+240>r.width)x=e.clientX-r.left-250;
+  if(y+130>r.height)y=e.clientY-r.top-140;
+  tooltip.style.left=x+"px"; tooltip.style.top=y+"px";
+}
+function hideTip(){tooltip.style.display="none"}
+
+// Capitals
+const gCap=document.getElementById("capitals");
+CAPS.forEach(c=>{
+  const g=document.createElementNS(NS,"g");
+  g.style.cursor="pointer";
+  g.addEventListener("click",()=>selectReg(c.reg));
+  mkEl("circle",{cx:c.x,cy:c.y,r:c.star?"4.5":"3",fill:"#b5312a",stroke:"#fff","stroke-width":"1.1"},g);
+  const lbl=c.star?c.n+" ★":c.n;
+  const dx=c.lx!==undefined?c.lx:5, anchor=c.la||"start";
+  const t=mkEl("text",{x:c.x+dx,y:c.y+3.5,"text-anchor":anchor,"font-size":c.star?"8":"7",fill:"#6b1a18","font-weight":c.star?"700":"600","font-family":"Cormorant Garamond,serif"},g);
+  t.textContent=lbl;
+  gCap.appendChild(g);
+});
+
+// Region list
+const rlist=document.getElementById("rlist");
+Object.keys(REGIONS).forEach(name=>{
+  const d=document.createElement("div");
+  d.className="ritem"; d.dataset.n=name; d.textContent=name;
+  d.onclick=()=>selectReg(name);
+  rlist.appendChild(d);
+});
+
+// Click on region paths
+document.querySelectorAll(".reg").forEach(p=>{
+  p.addEventListener("click",function(){selectReg(this.dataset.n,this)});
+});
+
+let activeReg=null;
+function selectReg(name,el){
+  if(activeReg===name){closeDetail();return}
+  activeReg=name;
+  document.querySelectorAll(".reg").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".ritem").forEach(d=>d.classList.remove("on"));
+  if(el)el.classList.add("active");
+  else document.querySelectorAll(`.reg[data-n="${name}"]`).forEach(p=>p.classList.add("active"));
+  document.querySelectorAll(`.ritem[data-n="${name}"]`).forEach(d=>{d.classList.add("on");d.scrollIntoView({block:"nearest"})});
+  openDetail(name);
+}
+
+function openDetail(name){
+  const r=REGIONS[name]; if(!r) return;
+  document.getElementById("detail-title").textContent=name;
+  document.getElementById("detail-subtitle").textContent=`${r.cap} · ${r.pop} · ${r.area}`;
+
+  let html=`<div class="d-section">
+    <h3>Key cities</h3>
+    <div class="city-list">${r.cities.map(c=>`<div class="city-item"><div class="city-dot"></div><span class="city-name">${c.n}</span><span class="city-desc">— ${c.d}</span></div>`).join("")}</div>
+  </div>
+  <div class="d-section">
+    <h3>Must-see sights</h3>
+    <div class="sight-list">${r.sights.map(s=>`<div class="sight-item" onclick="gSearch('${s.n.replace(/'/g,"\\'")} Italy')"><span class="sight-icon">${s.i}</span><div class="sight-text"><strong>${s.n}</strong><span>${s.d}</span></div></div>`).join("")}</div>
+  </div>
+  <div class="d-section">
+    <h3>Local cuisine</h3>
+    <div class="food-list">${r.food.map(f=>`<span class="food-tag" onclick="gSearch('${f.replace(/'/g,"\\'")} Italian food')">${f}</span>`).join("")}</div>
+  </div>`;
+
+  document.getElementById("detail-body").innerHTML=html;
+  document.getElementById("detail").classList.add("open");
+}
+
+function closeDetail(){
+  document.getElementById("detail").classList.remove("open");
+  document.querySelectorAll(".reg").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".ritem").forEach(d=>d.classList.remove("on"));
+  activeReg=null;
+}
+
+function togLayer(id,btn){
+  btn.classList.toggle("on");
+  document.getElementById(id).style.display=btn.classList.contains("on")?"":"none";
+}
+
+// Zoom & Pan
+const svgCont=document.getElementById("svg-container");
+let scale=1,tx=0,ty=0,dragging=false,startX=0,startY=0,startTx=0,startTy=0;
+function applyT(){svgCont.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`}
+function zoom(f,cx,cy){
+  const r=mapWrap.getBoundingClientRect();
+  if(cx===undefined)cx=r.width/2; if(cy===undefined)cy=r.height/2;
+  const ns=Math.min(8,Math.max(0.4,scale*f));
+  tx=cx-(cx-tx)*(ns/scale); ty=cy-(cy-ty)*(ns/scale); scale=ns; applyT();
+}
+function resetView(){scale=1;tx=0;ty=0;applyT()}
+mapWrap.addEventListener("wheel",e=>{e.preventDefault();const r=mapWrap.getBoundingClientRect();zoom(e.deltaY<0?1.15:1/1.15,e.clientX-r.left,e.clientY-r.top)},{passive:false});
+mapWrap.addEventListener("mousedown",e=>{if(e.button!==0)return;dragging=true;startX=e.clientX;startY=e.clientY;startTx=tx;startTy=ty;mapWrap.classList.add("grabbing")});
+window.addEventListener("mousemove",e=>{if(!dragging)return;tx=startTx+(e.clientX-startX);ty=startTy+(e.clientY-startY);applyT()});
+window.addEventListener("mouseup",()=>{dragging=false;mapWrap.classList.remove("grabbing")});
+let ltd=null;
+mapWrap.addEventListener("touchstart",e=>{if(e.touches.length===1){dragging=true;startX=e.touches[0].clientX;startY=e.touches[0].clientY;startTx=tx;startTy=ty}},{passive:true});
+mapWrap.addEventListener("touchmove",e=>{e.preventDefault();if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);if(ltd){const r=mapWrap.getBoundingClientRect();zoom(d/ltd,(e.touches[0].clientX+e.touches[1].clientX)/2-r.left,(e.touches[0].clientY+e.touches[1].clientY)/2-r.top)}ltd=d}else if(e.touches.length===1&&dragging){tx=startTx+(e.touches[0].clientX-startX);ty=startTy+(e.touches[0].clientY-startY);applyT()}},{passive:false});
+mapWrap.addEventListener("touchend",()=>{dragging=false;ltd=null});
+</script>
+</body>
+</html>
